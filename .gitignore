@@ -1,0 +1,45 @@
+# ============================================================
+# 暴打土豆 / Beat Potato —— 仓库忽略规则
+# 铁律：只提交源码与素材真源，构建产物一律不入库
+# ============================================================
+
+# ---- PC (C# / WPF / .NET) ----
+bin/
+obj/
+.vs/
+*.user
+*.suo
+publish/
+
+# ---- Android (Kotlin / Gradle) ----
+.gradle/
+.kotlin/
+build/
+local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# ---- 通用构建缓存 ----
+node_modules/
+dist/
+__pycache__/
+*.pyc
+
+# ---- 编辑器 / 系统 ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 临时调试残料（本项目历史上大量出现）----
+# 下划线前缀的截图 / 录屏 / 布局 dump，均为开发过程产物
+_*.png
+_*.jpg
+_*.mp4
+_*.xml
+_recover/
+_backup_assets/
+preview/

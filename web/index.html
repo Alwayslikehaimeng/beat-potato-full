@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<!-- 移动端第一目标：禁双击缩放、禁用户缩放，viewport-fit=cover 让刘海屏也能铺满 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#F1E7CF">
+<meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
+<!-- 加到主屏幕后全屏运行（iOS 的"网页版 App"），这是"不用安装 App"的实现方式 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="暴打土豆">
+<meta name="description" content="暴打土豆 网页版 —— 点一下打一下，iPhone / iPad 直接用 Safari 打开就能玩。">
+<title>暴打土豆</title>
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="stage" class="gated">
+
+  <!-- 土豆本体：13 帧全部预先摆在 DOM 里（浏览器解析阶段就开始下载、解码），
+       切帧只翻 visibility，不做 src 替换 —— iOS 上连点不会闪、不会卡 -->
+  <div id="potatoBox">
+    <img class="frame on" data-frame="state_0"     src="assets/potato/idle.png"                alt="土豆" draggable="false">
+    <img class="frame"    data-frame="state_0_hit" src="assets/potato/state/state_0_hit.png"   alt="" draggable="false">
+    <img class="frame"    data-frame="state_1"     src="assets/potato/state/state_1.png"       alt="" draggable="false">
+    <img class="frame"    data-frame="state_1_hit" src="assets/potato/state/state_1_hit.png"   alt="" draggable="false">
+    <img class="frame"    data-frame="state_2"     src="assets/potato/state/state_2.png"       alt="" draggable="false">
+    <img class="frame"    data-frame="state_2_hit" src="assets/potato/state/state_2_hit.png"   alt="" draggable="false">
+    <img class="frame"    data-frame="state_3"     src="assets/potato/state/state_3.png"       alt="" draggable="false">
+    <img class="frame"    data-frame="state_3_hit" src="assets/potato/state/state_3_hit.png"   alt="" draggable="false">
+    <img class="frame"    data-frame="state_4"     src="assets/potato/state/state_4.png"       alt="" draggable="false">
+    <img class="frame"    data-frame="state_4_hit" src="assets/potato/state/state_4_hit.png"   alt="" draggable="false">
+    <img class="frame"    data-frame="state_5"     src="assets/potato/state/state_5.png"       alt="" draggable="false">
+    <img class="frame"    data-frame="state_5_hit" src="assets/potato/state/state_5_hit.png"   alt="" draggable="false">
+    <img class="frame"    data-frame="wet"         src="assets/potato/state/wet.png"           alt="" draggable="false">
+  </div>
+
+  <!-- 连击徽章（土豆右上）与今日暴打徽章（土豆正下方）：数字与爆点由 JS 拼位 -->
+  <div id="streakBadge"></div>
+  <div id="todayBadge"></div>
+
+  <!-- 水枪 / 中指：只在触发时露脸，指针事件穿透 -->
+  <img id="squirtProp" class="prop" src="assets/potato/prop_squirt.png" alt="" draggable="false">
+  <img id="fingerProp" class="prop" src="assets/potato/prop_finger.png" alt="" draggable="false">
+
+  <div id="topbar">
+    <div id="totalLabel">总暴打 0</div>
+    <button id="volumeBtn" type="button" aria-label="音量" aria-haspopup="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 9.5h3.6L12 5.4v13.2L7.6 14.5H4z" fill="currentColor"/>
+        <path id="volArc1" d="M15.2 9.1a4 4 0 0 1 0 5.8" fill="none" stroke="currentColor"
+              stroke-width="1.9" stroke-linecap="round"/>
+        <path id="volArc2" d="M17.7 6.6a7.6 7.6 0 0 1 0 10.8" fill="none" stroke="currentColor"
+              stroke-width="1.9" stroke-linecap="round"/>
+        <path id="volSlash" d="M4.6 19.4 19.4 4.6" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round" style="display:none"/>
+      </svg>
+    </button>
+  </div>
+
+  <div id="volumeMenu" role="menu"></div>
+
+  <div id="propBar">
+    <button id="squirtBtn" class="prop-btn" type="button" aria-label="滋它一身水">
+      <span class="face"><img src="assets/potato/ui/btn_squirt.png" alt="" draggable="false"></span>
+    </button>
+    <button id="fingerBtn" class="prop-btn" type="button" aria-label="鄙视它">
+      <span class="face"><img src="assets/potato/ui/btn_finger.png" alt="" draggable="false"></span>
+    </button>
+  </div>
+
+  <!-- 变湿那一下甩出来的「土豆本豆」 -->
+  <img id="flashImage" src="assets/potato/flash_potato.jpg" alt="" draggable="false">
+
+  <!-- 开场页：iOS 必须先有一次真实触摸才允许出声，这一下不算击打 -->
+  <div id="gate">
+    <div class="gate-inner">
+      <img id="gatePotato" src="assets/potato/idle.png" alt="土豆" draggable="false">
+      <div class="gate-title">暴打土豆</div>
+      <div class="gate-hint">轻触屏幕开始</div>
+      <div class="gate-sub">点一下，打一下<br>打过的次数会自动存在这台设备上</div>
+    </div>
+  </div>
+
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>

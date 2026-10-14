@@ -1,0 +1,62 @@
+<Window x:Class="BeatPotato.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Beat Potato"
+        SizeToContent="WidthAndHeight"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize">
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <!-- 连击徽章：爆点垫底 + 数字。未击打时也按 1 位数字预留本行空间，保证窗口尺寸恒定（点击时土豆不跳动） -->
+        <Canvas x:Name="StreakBadge" Grid.Row="0" HorizontalAlignment="Right" RenderTransformOrigin="0.5,0" Visibility="Hidden">
+            <Canvas.RenderTransform>
+                <TransformGroup>
+                    <ScaleTransform x:Name="TotalBounce" />
+                    <RotateTransform Angle="-3" />
+                </TransformGroup>
+            </Canvas.RenderTransform>
+        </Canvas>
+        <!-- 土豆：靠窗口左侧（窗口右侧额外留白给连击徽章），只有本元素参与鼠标命中 -->
+        <Image x:Name="Potato" Grid.Row="1" HorizontalAlignment="Left" Stretch="Fill"
+               MouseLeftButtonDown="OnMouseLeftButtonDown"
+               MouseRightButtonDown="OnMouseRightButtonDown"
+               MouseDown="OnMousePropDown"
+               MouseMove="OnMouseMove"
+               MouseLeftButtonUp="OnMouseLeftButtonUp" />
+        <!-- 今日暴打：土豆正下方漫画描边字（用户素材拼接），持续显示；左边距由代码按土豆宽度居中 -->
+        <Canvas x:Name="TodayBadge" Grid.Row="2" HorizontalAlignment="Left" RenderTransformOrigin="0.5,0.5" Visibility="Hidden">
+            <Canvas.RenderTransform>
+                <TransformGroup>
+                    <ScaleTransform x:Name="TodayBounce" />
+                    <SkewTransform AngleX="-10" />
+                </TransformGroup>
+            </Canvas.RenderTransform>
+        </Canvas>
+        <!-- 道具层（2026-10-10）：右键的水枪 + 中键的中指。Canvas 不参与测量，道具尺寸
+             再大也不会撑高行、不会把土豆或今日徽章挤动；IsHitTestVisible=False 让道具
+             不吃鼠标事件（道具平时隐藏，那块透明区域照旧穿透到桌面）。 -->
+        <Canvas x:Name="PropLayer" Grid.Row="1" IsHitTestVisible="False">
+            <Image x:Name="SquirtProp" Stretch="Fill" Visibility="Hidden" />
+            <Image x:Name="FingerProp" Stretch="Fill" Visibility="Hidden" />
+        </Canvas>
+        <!-- 展开图层（2026-10-11）：变湿那一刻把「土豆本豆.jpg」从窗口中间由小到大甩出来再消失。
+             同样是不参与测量的 Canvas（RowSpan 盖住三行、放在最后所以盖在最上层）；
+             缩放以外框中心为原点，动画期间窗口会临时扩大以保证整张图不被裁掉。 -->
+        <Canvas x:Name="FlashLayer" Grid.RowSpan="3" IsHitTestVisible="False">
+            <Image x:Name="FlashImage" Stretch="Fill" Visibility="Hidden" RenderTransformOrigin="0.5,0.5">
+                <Image.RenderTransform>
+                    <ScaleTransform x:Name="FlashScale" />
+                </Image.RenderTransform>
+            </Image>
+        </Canvas>
+    </Grid>
+</Window>

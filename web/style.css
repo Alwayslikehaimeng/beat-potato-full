@@ -1,0 +1,278 @@
+/* ==========================================================================
+   暴打土豆 · 网页版（移动端优先，iOS Safari 为第一目标）
+   配色与观感照搬 Android 版：漫画纸感浅底 + 墨线 + 贴纸徽章
+   ========================================================================== */
+
+:root {
+  --paper-bg:  #F1E7CF;   /* 漫画纸感浅背景（Android 0xFFF1E7CF） */
+  --paper:     #FFFDF6;   /* 贴纸白底 */
+  --ink:       #221C15;   /* 墨线色 */
+  --btn:       56px;      /* 道具按钮边长（Android PROP_BUTTON_DP） */
+  --btn-radius: 14px;
+  --btn-margin: 6px;
+  /* 道具条离底距离 = Android PROP_BAR_BOTTOM_DP(56f)，固定不随土豆缩放，
+     再叠上刘海屏安全区。--bar-bottom-px 留作调试覆盖用。 */
+  --bar-bottom: calc(var(--bar-bottom-px, 56px) + env(safe-area-inset-bottom, 0px));
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper-bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+               "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  /* iOS：禁掉长按菜单、放大镜、文字选中、双击缩放、下拉回弹 */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  text-rendering: optimizeSpeed;
+}
+
+/* 舞台：固定铺满可视视口。宽高由 JS 按 visualViewport 写成 px，
+   这样 iOS 地址栏收起/展开时道具条不会被底部工具条盖住 */
+#stage {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper-bg);
+  touch-action: none;          /* 交给 pointerdown，不让浏览器插手手势 */
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- 土豆本体 */
+/* 正方形框（等价 Android 的 280dp FrameLayout）+ object-fit:contain（等价 FIT_CENTER）。
+   13 个状态素材宽高比不同，靠 contain 自动居中；JS 再按同一套公式反算真实内容框 */
+#potatoBox {
+  position: absolute;
+  will-change: transform;
+  pointer-events: none;
+}
+#potatoBox .frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  visibility: hidden;
+  /* 素材在显示尺寸上预先解码，切帧只翻 visibility，不换 src → iOS 连点不闪 */
+  -webkit-user-drag: none;
+}
+#potatoBox .frame.on { visibility: visible; }
+
+/* ------------------------------------------------------------------ 徽章 */
+#streakBadge, #todayBadge {
+  position: absolute;
+  pointer-events: none;
+  will-change: transform;
+}
+#streakBadge img, #todayBadge img {
+  position: absolute;
+  display: block;
+  -webkit-user-drag: none;
+}
+#streakBadge { transform-origin: 50% 100%; }  /* 从贴着土豆的那条边往外弹 */
+
+/* ------------------------------------------------------------------ 道具 */
+/* 水枪 / 中指：一次性反馈，不接收点击（点击要穿透成暴打） */
+.prop {
+  position: absolute;
+  pointer-events: none;
+  visibility: hidden;
+  -webkit-user-drag: none;
+}
+
+/* ---------------------------------------------------------------- 顶栏 */
+#topbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  padding: 0 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none;
+}
+#totalLabel {
+  font-size: 14px;
+  line-height: 48px;
+  color: var(--ink);
+  opacity: 0.75;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 音量按钮：纸白圆底 + 墨线，和道具按钮同一套漫画语言 */
+#volumeBtn {
+  pointer-events: auto;
+  position: relative;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 3px 0 0 var(--ink);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+}
+#volumeBtn:active { transform: translateY(3px); box-shadow: none; }
+#volumeBtn svg { width: 26px; height: 26px; display: block; }
+
+/* 音量菜单 */
+#volumeMenu {
+  position: absolute;
+  right: 12px;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  min-width: 132px;
+  padding: 6px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 0 4px 0 0 var(--ink);
+  display: none;
+  pointer-events: auto;
+  z-index: 6;
+}
+#volumeMenu.open { display: block; }
+#volumeMenu button {
+  display: block;
+  width: 100%;
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 15px;
+  text-align: left;
+  font-family: inherit;
+}
+#volumeMenu button.checked { background: #EFE3C4; font-weight: 600; }
+#volumeMenu button:active { background: #E4D5AF; }
+
+/* -------------------------------------------------------------- 道具按钮条 */
+#propBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--bar-bottom);
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+}
+
+/* 漫画贴纸质感的按钮：纸白底 + 墨线 + 硬阴影。
+   按下时（对齐 Android PropButtonView.onDraw）：本体不动、阴影上浮 0.55×3dp、图标下移 2dp */
+.prop-btn {
+  position: relative;
+  width: var(--btn);
+  height: var(--btn);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+.prop-btn::before {                 /* 硬阴影 */
+  content: '';
+  position: absolute;
+  inset: 0;
+  top: 3px;                         /* PROP_SHADOW_DROP_DP */
+  border-radius: var(--btn-radius);
+  background: var(--ink);
+  transition: top 40ms ease-out;
+}
+.prop-btn:active::before { top: 1.35px; }   /* 上浮 0.55 × 3dp */
+.prop-btn .face {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--btn-radius);
+  border: 2.5px solid var(--ink);
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+}
+.prop-btn .face img {
+  width: calc(100% - var(--btn-margin) * 2);
+  height: calc(100% - var(--btn-margin) * 2);
+  object-fit: contain;
+  -webkit-user-drag: none;
+  transition: transform 40ms ease-out;
+}
+.prop-btn:active .face img { transform: translateY(2px); }   /* PROP_PRESS_PUSH_DP */
+
+/* ------------------------------------------------------------ 展开图（闪现） */
+#flashImage {
+  position: absolute;
+  visibility: hidden;
+  opacity: 1;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+  -webkit-user-drag: none;
+  z-index: 4;
+}
+
+/* ------------------------------------------------------------------ 开场页 */
+/* iOS 不允许没有用户手势就出声，所以第一次必须点一下。
+   这一下只负责"解锁音频"，不算一次击打 */
+#gate {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  background: var(--paper-bg);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  transition: opacity 220ms ease-out;
+}
+#gate.gone { opacity: 0; pointer-events: none; }
+.gate-inner { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+#gatePotato {
+  width: min(46vw, 200px);
+  height: auto;
+  margin-bottom: 10px;
+  -webkit-user-drag: none;
+}
+.gate-title {
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: 3px;
+}
+.gate-hint {
+  margin-top: 14px;
+  font-size: 17px;
+  padding: 10px 30px;
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: 0 4px 0 0 var(--ink);
+  animation: gatePulse 1.5s ease-in-out infinite;
+}
+.gate-sub {
+  margin-top: 18px;
+  font-size: 12.5px;
+  opacity: 0.5;
+  line-height: 1.7;
+}
+@keyframes gatePulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.05); }
+}
+
+/* 开局页之后才有意义的元素，先藏起来避免闪一下 */
+#stage.gated #topbar,
+#stage.gated #propBar,
+#stage.gated #streakBadge,
+#stage.gated #todayBadge { visibility: hidden; }

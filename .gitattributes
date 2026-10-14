@@ -1,0 +1,13 @@
+# 统一使用 LF：项目现有源码与脚本全部是 LF（.ps1 带 UTF-8 BOM，pwsh 能正确识别）
+* text=auto eol=lf
+
+# 二进制素材不做任何转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.wav binary
+*.mp3 binary
+*.apk binary
+*.jar binary
+*.zip binary

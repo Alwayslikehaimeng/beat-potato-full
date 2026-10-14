@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B1A17">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<link rel="icon" type="image/png" href="icon-180.png">
+<title>暴打土豆 · 自检页</title>
+<style>
+  :root { --ink:#221C15; --paper:#F1E7CF; --line:#3A362F; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px 16px 60px;
+    background: #1B1A17; color: #EDE7DA;
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  h1 { font-size: 19px; margin: 0 0 4px; letter-spacing: 1px; }
+  .sub { color: #9A9284; font-size: 12.5px; margin-bottom: 18px; }
+  h2 { font-size: 15px; margin: 26px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  h2 span { color:#9A9284; font-weight:400; font-size:12.5px; }
+  a { color: #FFD98A; }
+  button {
+    font: inherit; color: #EDE7DA; background: #2C2924;
+    border: 1px solid var(--line); border-radius: 9px;
+    padding: 7px 13px; cursor: pointer; margin: 0 6px 6px 0;
+  }
+  button:active { background: #3C382F; }
+  button.hot { background: #4A3A1C; border-color: #7A5F2A; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 4px 0; vertical-align: top; font-size: 13px; }
+  td:first-child { color: #9A9284; width: 42%; }
+  code { background: #2C2924; padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  .ok  { color: #8FD98F; }
+  .bad { color: #FF8F8F; }
+  .stagewrap { background: var(--paper); border-radius: 14px; overflow: hidden; }
+  #gameFrame { border: 0; display: block; transform-origin: top left; background: var(--paper); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+  .cell { background: #2C2924; border-radius: 9px; padding: 6px; text-align: center; }
+  .cell img { max-width: 100%; height: 56px; object-fit: contain; display: block; margin: 0 auto; }
+  .cell b { display: block; font-size: 10.5px; font-weight: 500; color: #C9C1B3; margin-top: 5px;
+            word-break: break-all; line-height: 1.25; }
+  .cell i { display: block; font-size: 10px; color: #8A8274; font-style: normal; }
+  pre { background: #2C2924; padding: 10px; border-radius: 9px; overflow-x: auto; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<h1>暴打土豆 · 自检页</h1>
+<div class="sub">
+  这个页面不参与游戏，只用来核对素材、音效、存档和布局。
+  正式游戏：<a href="index.html">index.html</a>
+</div>
+
+<div class="stagewrap" id="stagewrap">
+  <iframe id="gameFrame" src="index.html" width="390" height="844"
+          scrolling="no" title="游戏预览"></iframe>
+</div>
+<div class="sub" id="frameNote" style="margin-top:8px">上面是真实游戏本体（缩放显示），下面的按钮会直接操作它。</div>
+
+<h2>1. 环境</h2>
+<table id="envTable"></table>
+
+<h2>2. 存档 <span>（这台设备上的真实数据）</span></h2>
+<table id="saveTable"></table>
+<div style="margin-top:10px">
+  <button id="btnReload">重新读取</button>
+  <button id="btnRescan">重新扫描素材</button>
+  <button id="btnWipe" class="hot">清空存档（含形态阈值）</button>
+</div>
+<div class="sub" id="wipeNote"></div>
+
+<h2>3. 音效试听 <span>（点一下用 100% 音量播放，括号里是实测时长）</span></h2>
+<div id="sfxBox"></div>
+<div style="margin-top:8px">
+  <button id="btnStopAll">全部停止</button>
+  <button id="btnPlayAll">依次播放全部</button>
+</div>
+
+<h2>4. 素材总览 <span>（尺寸取素材真实像素）</span></h2>
+<div id="assetBox"></div>
+
+<h2>5. 玩法快捷 <span>（操作的是上面那个真实实例）</span></h2>
+<div>
+  <button data-act="hit1">打 1 下</button>
+  <button data-act="hit10">打 10 下</button>
+  <button data-act="hit100">打 100 下</button>
+  <button data-act="squirt">滋水枪</button>
+  <button data-act="finger">竖中指</button>
+  <button data-act="dry">解除湿身</button>
+  <button data-act="reset">连击归零</button>
+  <button data-act="start">跳过开场页</button>
+</div>
+
+<h2>6. 实时状态 <span>（每 400ms 刷新）</span></h2>
+<pre id="liveBox">等待游戏启动…</pre>
+
+<script>
+'use strict';
+var frame = document.getElementById('gameFrame');
+var bp = null;
+
+/* 让预览框适配屏幕宽度 */
+function fitFrame() {
+  var wrap = document.getElementById('stagewrap');
+  var avail = wrap.clientWidth;
+  var scale = Math.min(1, avail / 390);
+  frame.style.transform = 'scale(' + scale + ')';
+  frame.style.width = '390px';
+  frame.style.height = '844px';
+  wrap.style.height = Math.round(844 * scale) + 'px';
+}
+window.addEventListener('resize', fitFrame);
+fitFrame();
+
+function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+
+/* ---------------------------------------------------------------- 环境 */
+function renderEnv() {
+  var vv = window.visualViewport;
+  var rows = [
+    ['页面地址', location.href],
+    ['User Agent', navigator.userAgent],
+    ['窗口 innerWidth x innerHeight', window.innerWidth + ' x ' + window.innerHeight],
+    ['visualViewport', vv ? (Math.round(vv.width) + ' x ' + Math.round(vv.height) + '  scale ' + vv.scale) : '不支持'],
+    ['devicePixelRatio', window.devicePixelRatio],
+    ['屏幕 screen', screen.width + ' x ' + screen.height],
+    ['独立窗口模式 (PWA)', (navigator.standalone === true) ? '<span class="ok">是</span>' : '否（浏览器标签页）'],
+    ['localStorage', (function () {
+      try { localStorage.setItem('__bp_probe', '1'); localStorage.removeItem('__bp_probe'); return '<span class="ok">可读写</span>'; }
+      catch (e) { return '<span class="bad">不可用（无痕模式？）' + esc(e.name) + '</span>'; }
+    })()],
+    ['音频模式', bp ? (bp.audio.getMode() === 'webaudio' ? '<span class="ok">Web Audio</span>'
+                  : bp.audio.getMode() === 'html' ? '<span class="bad">HTMLAudio 降级（file:// 打开会这样）</span>'
+                  : '<span class="bad">尚未就绪</span>') : '…'],
+    ['音频就绪 isReady', bp ? (bp.audio.isReady() ? '<span class="ok">是</span>' : '否') : '…'],
+    ['素材尺寸表条目数', bp ? Object.keys(bp.dims).length : '…'],
+    ['预载完成 ready', bp ? (bp.state.ready ? '<span class="ok">是</span>' : '否（可能还有素材没加载完）') : '…'],
+    ['页面是否有 JS 报错', window.__bpErrors && window.__bpErrors.length
+        ? '<span class="bad">' + window.__bpErrors.length + ' 条</span>' : '<span class="ok">无</span>']
+  ];
+  document.getElementById('envTable').innerHTML = rows.map(function (r) {
+    return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>';
+  }).join('');
+}
+
+/* ------------------------------------------------------------ 存档面板 */
+function renderSave() {
+  if (!bp) return;
+  var S = bp.state;
+  var rows = [
+    ['总暴打（total）', S.totalHits],
+    ['今日暴打（today）', S.todayHits],
+    ['今日日期（date）', S.todayDate || '（还没写）'],
+    ['形态阈值 thresholds', S.thresholds.join(' , ') + '   ←  每轮连击断掉都会重新随机；重启读回同一组'],
+    ['当前连击 streakHits', S.streakHits + (S.streakEndsAtMs > 0
+        ? '   （' + (Math.max(0, S.streakEndsAtMs - Date.now()) / 1000).toFixed(1) + 's 后归零）' : '')],
+    ['当前形态 stateIndex', S.stateIndex + ' / 5'],
+    ['是否湿身 wet', S.wet ? '是' : '否'],
+    ['水枪计数 squirtCount', S.squirtCount + ' / 5'],
+    ['水枪累计 squirtTotal', S.squirtTotal + '   ←  前 ' + bp.consts.SQUIRT_LINE_BLOCK_CLICKS + ' 下不出随机台词（跨轮不清零）'],
+    ['随机台词冷却（左键）', S.clicksSinceRandomLineHit + ' / ' + bp.consts.RANDOM_LINE_COOLDOWN_CLICKS_HIT],
+    ['随机台词冷却（道具）', S.clicksSinceRandomLineProp + ' / ' + bp.consts.RANDOM_LINE_COOLDOWN_CLICKS_PROP],
+    ['音量 volumePercent', S.volumePercent + '%'],
+    ['localStorage 可用', bp.store.ok ? '<span class="ok">是</span>' : '<span class="bad">否（不会保存）</span>']
+  ];
+  document.getElementById('saveTable').innerHTML = rows.map(function (r) {
+    return '<tr><td>' + r[0] + '</td><td>' + esc(r[1]) + '</td></tr>';
+  }).join('');
+}
+
+/* ------------------------------------------------------------ 音效试听 */
+function renderSfx() {
+  var box = document.getElementById('sfxBox');
+  box.innerHTML = '';
+  bp.sfxNames.forEach(function (name) {
+    var b = document.createElement('button');
+    b.textContent = name + '（' + (bp.audio.durationOf(name) || '?') + 'ms）';
+    b.addEventListener('click', function () {
+      var ms = bp.audio.play(name, 1.0);          // 试听一律满音量
+      b.textContent = name + '（已播 ' + Math.round(ms) + 'ms）';
+      setTimeout(function () {
+        b.textContent = name + '（' + (bp.audio.durationOf(name) || '?') + 'ms）';
+      }, 1400);
+    });
+    box.appendChild(b);
+  });
+}
+function playAll() {
+  var list = bp.sfxNames, i = 0;
+  (function next() {
+    if (i >= list.length) return;
+    var ms = bp.audio.play(list[i], 1.0);
+    i++;
+    setTimeout(next, Math.max(400, ms + 350));
+  })();
+}
+
+/* ------------------------------------------------------------ 素材总览 */
+function renderAssets() {
+  var box = document.getElementById('assetBox');
+  box.innerHTML = '';
+  var keys = Object.keys(bp.dims).sort();
+  var groups = {};
+  keys.forEach(function (k) {
+    var dir = k.substring(0, k.lastIndexOf('/'));
+    (groups[dir] = groups[dir] || []).push(k);
+  });
+  Object.keys(groups).sort().forEach(function (dir) {
+    var h = document.createElement('h2');
+    h.style.marginTop = '18px';
+    h.style.fontSize = '13px';
+    h.innerHTML = esc(dir) + ' <span>' + groups[dir].length + ' 个</span>';
+    box.appendChild(h);
+    var g = document.createElement('div');
+    g.className = 'grid';
+    groups[dir].forEach(function (k) {
+      var d = bp.dims[k];
+      var name = k.substring(k.lastIndexOf('/') + 1);
+      var cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.innerHTML = '<img src="' + esc(k) + '" alt=""><b>' + esc(name) + '</b><i>' + d[0] + '×' + d[1] + '</i>';
+      cell.querySelector('img').addEventListener('click', function () { window.open(k, '_blank'); });
+      g.appendChild(cell);
+    });
+    box.appendChild(g);
+  });
+}
+
+/* -------------------------------------------------------------- 实时状态 */
+function renderLive() {
+  if (!bp) return;
+  var S = bp.state, L = bp.layout();
+  document.getElementById('liveBox').textContent =
+    'started      = ' + S.started + '\n' +
+    'ready        = ' + S.ready + '\n' +
+    'total / today= ' + S.totalHits + ' / ' + S.todayHits + '\n' +
+    'streak       = ' + S.streakHits + '   stateIndex = ' + S.stateIndex + '   wet = ' + S.wet + '\n' +
+    '当前帧       = ' + (document.querySelector('#gameFrame') ? '（见预览）' : '') + '\n' +
+    '视口         = ' + L.W + ' x ' + L.H + '\n' +
+    '土豆边长     = ' + L.side.toFixed(1) + '  (f = ' + L.f.toFixed(4) + ')\n' +
+    '内容框       = L' + L.contentLeft.toFixed(1) + ' T' + L.contentTop.toFixed(1) +
+    ' R' + L.contentRight.toFixed(1) + ' B' + L.contentBottom.toFixed(1) + '\n' +
+    '音频模式     = ' + bp.audio.getMode();
+}
+
+/* ---------------------------------------------------------------- 动作 */
+document.querySelectorAll('[data-act]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    if (!bp) return;
+    var a = b.getAttribute('data-act');
+    if (a === 'hit1') bp.hit();
+    else if (a === 'hit10') for (var i = 0; i < 10; i++) bp.hit();
+    else if (a === 'hit100') for (var j = 0; j < 100; j++) bp.hit();
+    else if (a === 'squirt') bp.squirt();
+    else if (a === 'finger') bp.finger();
+    else if (a === 'dry') bp.exitWet();
+    else if (a === 'reset') bp.resetStreak();
+    else if (a === 'start') bp.startGame();
+    setTimeout(function () { renderSave(); renderLive(); }, 60);
+  });
+});
+
+document.getElementById('btnReload').addEventListener('click', function () { renderSave(); renderLive(); });
+document.getElementById('btnRescan').addEventListener('click', function () {
+  if (!bp) return;
+  renderEnv(); renderSave(); renderSfx(); renderAssets(); renderLive();
+});
+document.getElementById('btnStopAll').addEventListener('click', function () { bp.audio.stopAll(); });
+document.getElementById('btnPlayAll').addEventListener('click', playAll);
+document.getElementById('btnWipe').addEventListener('click', function () {
+  try {
+    localStorage.removeItem('beatpotato.stats.v1');
+    localStorage.removeItem('beatpotato.settings.v1');
+    document.getElementById('wipeNote').innerHTML =
+      '<span class="ok">已清空。刷新本页即可看到全新存档（阈值会重新随机）。</span>';
+  } catch (e) {
+    document.getElementById('wipeNote').innerHTML = '<span class="bad">清空失败：' + esc(e.message) + '</span>';
+  }
+});
+
+/* ---------------------------------------------------------------- 启动 */
+var tries = 0;
+(function waitForGame() {
+  var w = frame.contentWindow;
+  var ready = false;
+  try { ready = !!(w && w.BeatPotato && w.BeatPotato.state.ready); } catch (e) { ready = false; }
+  // 必须等「预载完成」再渲染：素材尺寸表和音效时长都是预载过程中才填进来的，
+  // 早了会渲染出一份残缺的列表（这正是本页第一次写出来时的 bug）。
+  // 兜底放宽到 900 次（90 秒）：线上首次加载要拉 10MB 素材，实测约 50 秒，
+  // 原来的 150 次（15 秒）会在线上提前兜底，渲染出只有十几个格子的残缺素材表。
+  if (w && w.BeatPotato && ready) {
+    bp = w.BeatPotato;
+    try { w.addEventListener('error', function (e) { (window.__bpErrors = window.__bpErrors || []).push(e.message); }); } catch (e) {}
+    renderEnv(); renderSave(); renderSfx(); renderAssets(); renderLive();
+    setInterval(function () { renderSave(); renderLive(); }, 400);
+    return;
+  }
+  if (++tries > 900) {
+    document.getElementById('liveBox').textContent = '游戏实例一直没起来，检查 index.html 是否报错。';
+    return;
+  }
+  setTimeout(waitForGame, 100);
+})();
+
+window.addEventListener('error', function (e) { (window.__bpErrors = window.__bpErrors || []).push(e.message); });
+</script>
+</body>
+</html>
