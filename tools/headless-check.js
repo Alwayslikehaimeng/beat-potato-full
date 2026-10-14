@@ -10,7 +10,7 @@
  * =========================================================================== */
 'use strict';
 
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -44,6 +44,78 @@ const EDGE_CANDIDATES = [
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* ---------------------------------------------------------- 收尾清理（重要）
+ * 历史教训：曾因清理不彻底，在 %TEMP% 堆了 21 个 bp-headless-* 目录、约 1GB。
+ * 两个原因：
+ *   1) Windows 上 Edge 会派生一堆子进程，child.kill() 只杀主进程，子进程仍
+ *      持有 user-data-dir 里的文件锁，rmSync 立刻失败；
+ *   2) 清理只写在正常路径末尾，脚本中途崩溃/超时就走不到，目录必然残留。
+ * 所以：用 taskkill /F /T 杀整棵进程树 → 退避重试删除 → 仍失败则打印路径。
+ */
+let ACTIVE_CHILD = null;
+let ACTIVE_DIR = null;
+
+async function killBrowserTree(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  try {
+    if (process.platform === 'win32') {
+      // /T 连子进程一起杀，/F 强制；Edge 的渲染/GPU 子进程不杀掉就锁着目录
+      spawn('taskkill', ['/F', '/T', '/PID', String(child.pid)], { stdio: 'ignore' });
+    } else {
+      child.kill('SIGKILL');
+    }
+  } catch (e) { /* 进程可能已经没了 */ }
+  await Promise.race([
+    new Promise((r) => { child.once('exit', r); }),
+    sleep(3000)
+  ]);
+}
+
+async function removeUserDataDir(dir) {
+  if (!dir) return;
+  for (let i = 0; i < 10; i++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      if (!fs.existsSync(dir)) return;
+    } catch (e) { /* 还被锁着，退避后再试 */ }
+    await sleep(200 * (i + 1));
+  }
+  if (fs.existsSync(dir)) {
+    console.error('');
+    console.error('  警告：临时目录没能删掉，请手动清理：');
+    console.error('    ' + dir);
+  }
+}
+
+async function cleanupHeadless() {
+  await killBrowserTree(ACTIVE_CHILD);
+  await removeUserDataDir(ACTIVE_DIR);
+  ACTIVE_CHILD = null;
+  ACTIVE_DIR = null;
+}
+
+// 最后一道兜底：未捕获异常 / Ctrl+C / 任意 process.exit 都尽力清一次。
+// 这里必须用同步 API（exit 事件里不能 await），否则浏览器还活着、目录仍被锁。
+process.on('exit', () => {
+  if (ACTIVE_CHILD && ACTIVE_CHILD.pid && ACTIVE_CHILD.exitCode === null) {
+    try {
+      if (process.platform === 'win32') {
+        execSync(
+          'taskkill /F /T /PID ' + ACTIVE_CHILD.pid, { stdio: 'ignore' });
+      } else {
+        ACTIVE_CHILD.kill('SIGKILL');
+      }
+    } catch (e) { /* 已经退出了 */ }
+  }
+  if (ACTIVE_DIR && fs.existsSync(ACTIVE_DIR)) {
+    try { fs.rmSync(ACTIVE_DIR, { recursive: true, force: true }); } catch (e) {}
+    if (fs.existsSync(ACTIVE_DIR)) {
+      console.error('  警告：临时目录残留，请手动清理：' + ACTIVE_DIR);
+    }
+  }
+});
+process.on('SIGINT', () => { try { process.exit(130); } catch (e) {} });
 
 /* ----------------------------------------------------------- CDP 迷你客户端 */
 class CDP {
@@ -636,6 +708,7 @@ const DEVTOOLS_SCRIPT = `
   }
   const userDataDir = path.join(os.tmpdir(), 'bp-headless-' + crypto.randomBytes(6).toString('hex'));
   fs.mkdirSync(userDataDir, { recursive: true });
+  ACTIVE_DIR = userDataDir;   // 登记，供收尾与崩溃路径清理
 
   const args = [
     '--headless=new',
@@ -652,6 +725,7 @@ const DEVTOOLS_SCRIPT = `
     'about:blank'
   ];
   const child = spawn(exe, args, { stdio: 'ignore', detached: false });
+  ACTIVE_CHILD = child;   // 登记，供收尾与崩溃路径清理
 
   let wsUrl = null;
   for (let i = 0; i < 100; i++) {
@@ -662,7 +736,7 @@ const DEVTOOLS_SCRIPT = `
     } catch (e) { /* 还没起来 */ }
     await sleep(150);
   }
-  if (!wsUrl) { try { child.kill(); } catch (e) {} throw new Error('连不上 headless 调试端口'); }
+  if (!wsUrl) { await killBrowserTree(child); throw new Error('连不上 headless 调试端口'); }
 
   const cdp = await CDP.connect(wsUrl);
 
@@ -904,12 +978,11 @@ const DEVTOOLS_SCRIPT = `
   console.log(failed ? '结果: 有问题，需要修' : '结果: 全部通过');
 
   try { cdp.ws.close(); } catch (e) {}
-  try { child.kill(); } catch (e) {}
-  await sleep(400);
-  try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch (e) {}
+  await cleanupHeadless();
 
   process.exit(failed ? 1 : 0);
-})().catch((e) => {
+})().catch(async (e) => {
   console.error('自检脚本崩了: ' + (e && e.stack || e));
+  try { await cleanupHeadless(); } catch (e2) {}
   process.exit(3);
 });
